@@ -187,8 +187,9 @@ class WALinuxAgentShim(object):
         '  </Container>',
         '</Health>'])
 
-    def __init__(self):
+    def __init__(self, cloud_data_dir):
         LOG.debug('WALinuxAgentShim instantiated...')
+        self.cloud_data_dir = cloud_data_dir
         self.endpoint = self.find_endpoint()
         self.openssl_manager = None
         self.values = {}
@@ -212,14 +213,17 @@ class WALinuxAgentShim(object):
             packed_bytes = unescaped_value.encode('utf-8')
         return socket.inet_ntoa(packed_bytes)
 
-    @staticmethod
-    def find_endpoint():
+    def find_endpoint(self):
         LOG.debug('Finding Azure endpoint...')
-        content = util.load_file('/var/lib/dhcp/dhclient.eth0.leases')
-        value = None
-        for line in content.splitlines():
-            if 'unknown-245' in line:
-                value = line.strip(' ').split(' ', 2)[-1].strip(';\n"')
+
+        # Option-245 stored in data_dir/dhcpoptions by dhclient
+        content = util.load_file(os.path.join(self.cloud_data_dir, 'dhcpoptions'))
+        dhcp_options = dict(line.split('=',1) for line in content.strip().split("\n"))
+
+        # Depending on the environment, the option can be preceded by DHCP4 or new
+        value = dhcp_options.get("DHCP4_UNKNOWN_245") if dhcp_options.get("new_unknown_245") is None else \
+            dhcp_options.get("new_unknown_245")
+        LOG.debug("Option-245 has value of {}".format(value))
         if value is None:
             raise ValueError('No endpoint found in DHCP config.')
         endpoint_ip_address = WALinuxAgentShim.get_ip_from_lease_value(value)
@@ -271,8 +275,8 @@ class WALinuxAgentShim(object):
         LOG.info('Reported ready to Azure fabric.')
 
 
-def get_metadata_from_fabric():
-    shim = WALinuxAgentShim()
+def get_metadata_from_fabric(cloud_data_dir):
+    shim = WALinuxAgentShim(cloud_data_dir)
     try:
         return shim.register_with_azure_and_fetch_data()
     finally:

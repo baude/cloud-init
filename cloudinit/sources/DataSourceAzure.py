@@ -34,6 +34,8 @@ from cloudinit.settings import PER_ALWAYS
 from cloudinit import sources
 from cloudinit import util
 
+from functools import partial
+
 LOG = logging.getLogger(__name__)
 
 DS_NAME = 'Azure'
@@ -115,6 +117,7 @@ class DataSourceAzureNet(sources.DataSource):
         self.ds_cfg = util.mergemanydict([
             util.get_cfg_by_path(sys_cfg, DS_CFG_PATH, {}),
             BUILTIN_DS_CONFIG])
+        self.cloud_data_dir = paths.get_cpath('data')
 
     def __str__(self):
         root = sources.DataSource.__str__(self)
@@ -224,9 +227,8 @@ class DataSourceAzureNet(sources.DataSource):
         # walinux agent writes files world readable, but expects
         # the directory to be protected.
         write_files(ddir, files, dirmode=0o700)
-
         if self.ds_cfg['agent_command'] == '__builtin__':
-            metadata_func = get_metadata_from_fabric
+            metadata_func = partial(get_metadata_from_fabric, self.cloud_data_dir)
         else:
             metadata_func = self.get_metadata_from_agent
         try:
